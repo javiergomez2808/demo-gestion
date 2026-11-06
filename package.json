@@ -1,0 +1,19 @@
+{
+  "name": "demo-negocios",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Demo compartible de una plataforma de gestión para pequeños negocios de servicios (datos ficticios).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {
+    "chart.js": "^4.6.1"
+  },
+  "devDependencies": {
+    "vite": "^8.3.6",
+    "vite-plugin-pwa": "^2.0.0"
+  }
+}
