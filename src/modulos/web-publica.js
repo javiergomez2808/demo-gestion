@@ -9,10 +9,19 @@ import { buscarOCrearCliente, crearCita } from '../core/citas.js';
 
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
+const rangoDias = (dias) => (dias.length > 2 ? `${F.capital(DIAS[dias[0]])} a ${DIAS[dias.at(-1)]}` : dias.map((d) => F.capital(DIAS[d])).join(' y '));
+
+/** "Lunes a viernes, 10:00 a. m. – 8:00 p. m. · Sábado, 10:00 a. m. – 2:00 p. m." (agrupa días con el mismo horario). */
 function textoHorario(h) {
   const dias = [...h.dias].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
-  const rango = dias.length > 2 ? `${F.capital(DIAS[dias[0]])} a ${DIAS[dias.at(-1)]}` : dias.map((d) => F.capital(DIAS[d])).join(' y ');
-  return `${rango}, ${F.hora12(h.abre)} – ${F.hora12(h.cierra)}`;
+  const grupos = [];
+  for (const d of dias) {
+    const x = { abre: h.abre, cierra: h.cierra, ...(h.porDia?.[d] || {}) };
+    const g = grupos.at(-1);
+    if (g && g.abre === x.abre && g.cierra === x.cierra) g.dias.push(d);
+    else grupos.push({ ...x, dias: [d] });
+  }
+  return grupos.map((g) => `${rangoDias(g.dias)}, ${F.hora12(g.abre)} – ${F.hora12(g.cierra)}`).join(' · ');
 }
 
 export default {
@@ -38,7 +47,7 @@ export default {
       <div class="navegador">
         <div class="navegador-barra" aria-hidden="true"><span class="puntos"><i></i><i></i><i></i></span><span class="url">${icono('candado')} vista previa de tu sitio</span></div>
         <div class="sitio">
-          <section class="sitio-hero">
+          <section class="sitio-hero${n.portada ? ' con-portada' : ''}"${n.portada ? ` style="--portada:url('${esc(new URL(n.portada, document.baseURI).href)}')"` : ''}>
             ${logoHtml(config, 'logo-grande')}
             <h2>${esc(n.nombre)}</h2>
             <p class="sitio-tagline">${esc(n.tagline)}</p>
@@ -65,7 +74,7 @@ export default {
                     (s) => `
                   <article class="sitio-servicio">
                     <div><h4>${esc(s.nombre)}</h4>${s.descripcion ? `<p>${esc(s.descripcion)}</p>` : ''}<small>${icono('reloj')} ${s.duracion} min</small></div>
-                    <div class="sitio-precio"><b>${F.dinero(s.precio)}</b><button type="button" class="btn btn-sec btn-chico" data-reservar="${s.id}">Reservar</button></div>
+                    <div class="sitio-precio"><b>${esc(F.precioPublico(s))}</b><button type="button" class="btn btn-sec btn-chico" data-reservar="${s.id}">Reservar</button></div>
                   </article>`,
                   )
                   .join('')}
@@ -104,11 +113,11 @@ export default {
               <h3>Visítanos</h3>
               <p>${esc(n.direccion)}</p>
               <p>${esc(textoHorario(n.horario))}</p>
-              <p class="texto-sec">WhatsApp: ${esc(n.whatsapp)} (número ficticio)</p>
+              <p class="texto-sec">WhatsApp: ${esc(n.whatsapp)}${n.datosReales ? '' : ' (número ficticio)'}</p>
             </div>
           </section>
 
-          <footer class="sitio-pie">© ${new Date().getFullYear()} ${esc(n.nombre)} · Sitio de demostración con datos ficticios</footer>
+          <footer class="sitio-pie">© ${new Date().getFullYear()} ${esc(n.nombre)} · ${esc(n.pie || 'Sitio de demostración con datos ficticios')}</footer>
         </div>
       </div>
       <button type="button" class="wa-flotante" data-whatsapp aria-label="Escribir por WhatsApp">${icono('chat')}</button>`;
@@ -121,6 +130,14 @@ export default {
     el.addEventListener('click', alClic);
   },
 };
+
+/** Opciones del menú de servicios; si hay varias categorías, agrupadas (útil con menús largos). */
+function opcionesServicio(servicios, elegido) {
+  const opcion = (s) => `<option value="${s.id}" ${s.id === elegido ? 'selected' : ''}>${esc(s.nombre)} · ${esc(F.precioPublico(s))}</option>`;
+  const categorias = [...new Set(servicios.map((s) => s.categoria || 'Servicios'))];
+  if (categorias.length < 2) return servicios.map(opcion).join('');
+  return categorias.map((cat) => `<optgroup label="${esc(cat)}">${servicios.filter((s) => (s.categoria || 'Servicios') === cat).map(opcion).join('')}</optgroup>`).join('');
+}
 
 /** Reserva en línea en pasos simples: servicio → día → horario → datos. */
 export function reservar(ctx, servicioId = null) {
@@ -137,7 +154,7 @@ export function reservar(ctx, servicioId = null) {
     cuerpo: `
       <form class="form" id="form-reserva" autocomplete="off">
         <label class="campo"><span>${t.M('servicio')}</span>
-          <select name="servicioId">${servicios.map((s) => `<option value="${s.id}" ${s.id === sel.servicioId ? 'selected' : ''}>${esc(s.nombre)} · ${F.dinero(s.precio)}</option>`).join('')}</select>
+          <select name="servicioId">${opcionesServicio(servicios, sel.servicioId)}</select>
         </label>
         <label class="campo"><span>${t.M('profesional')}</span><select name="profesionalId"></select></label>
         <fieldset class="campo"><legend>Día</legend><div class="dias-reserva" data-dias></div></fieldset>

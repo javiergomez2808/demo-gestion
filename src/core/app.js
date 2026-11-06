@@ -1,6 +1,6 @@
 // Estructura de la app: banner de demo, selectores de rubro y plan, navegación y rutas (#/modulo).
 
-import { RUBROS, obtenerRubro } from './rubros.js';
+import { RUBROS, RUBROS_VISIBLES, obtenerRubro } from './rubros.js';
 import { PLANES, planPorId, incluye, esPlan } from './planes.js';
 import { crearStore, leerPreferencia, guardarPreferencia, borrarTodo } from './store.js';
 import { crearVocab } from './vocab.js';
@@ -33,7 +33,7 @@ export function iniciarApp(raiz) {
   const params = new URLSearchParams(location.search);
   const valido = (id) => RUBROS.some((r) => r.id === id);
   const estado = {
-    rubroId: valido(params.get('rubro')) ? params.get('rubro') : valido(leerPreferencia('rubro')) ? leerPreferencia('rubro') : RUBROS[0].id,
+    rubroId: valido(params.get('rubro')) ? params.get('rubro') : valido(leerPreferencia('rubro')) ? leerPreferencia('rubro') : RUBROS_VISIBLES[0].id,
     plan: esPlan(params.get('plan')) ? params.get('plan') : esPlan(leerPreferencia('plan')) ? leerPreferencia('plan') : 'crecimiento',
   };
   let config;
@@ -134,7 +134,7 @@ export function iniciarApp(raiz) {
     const plan = planPorId(estado.plan);
     const enBarra = mods.filter((m) => m.enBarra);
     raiz.innerHTML = `
-      <div class="banner-demo" role="note">${icono('info')}<span>Demo con datos ficticios</span></div>
+      <div class="banner-demo" role="note">${icono('info')}<span>${esc(config.aviso || 'Demo con datos ficticios')}</span></div>
       <div class="app">
         <aside class="lateral">
           <a class="lateral-marca" href="#/web">${logoHtml(config)}<span><b>${esc(config.negocio.nombre)}</b><small>${esc(config.negocio.tagline || '')}</small></span></a>
@@ -152,11 +152,15 @@ export function iniciarApp(raiz) {
                 ${logoHtml(config)}
                 <div class="barra-titulos">
                   <b>${esc(config.negocio.nombre)}</b>
-                  <label class="selector-rubro">
+                  ${
+                    config.oculto
+                      ? `<span class="selector-rubro selector-fijo">${esc(config.etiqueta || 'Demo personalizada')}</span>`
+                      : `<label class="selector-rubro">
                     <span class="sr">Rubro de la demo</span>
-                    <select data-rubro aria-label="Rubro de la demo">${RUBROS.map((r) => `<option value="${r.id}" ${r.id === config.id ? 'selected' : ''}>${esc(r.rubro)}</option>`).join('')}</select>
+                    <select data-rubro aria-label="Rubro de la demo">${RUBROS_VISIBLES.map((r) => `<option value="${r.id}" ${r.id === config.id ? 'selected' : ''}>${esc(r.rubro)}</option>`).join('')}</select>
                     ${icono('abajo')}
-                  </label>
+                  </label>`
+                  }
                 </div>
               </div>
               <div class="barra-acciones">

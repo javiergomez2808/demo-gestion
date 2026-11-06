@@ -103,7 +103,7 @@ src/
 | Campo | Para qué sirve |
 |---|---|
 | `rubro` | Nombre en el selector, p. ej. `'Uñas / Manicure'` |
-| `negocio` | Nombre ficticio, `tagline`, `logo` (`{ emoji: '💅' }` o `{ svg: '<svg…>' }`), dirección, WhatsApp, nombre del dueño y `horario` (`dias`: 0 = domingo … 6 = sábado) |
+| `negocio` | Nombre ficticio, `tagline`, `logo` (`{ emoji: '💅' }`, `{ svg: '<svg…>' }` o `{ img: 'ruta.webp' }`), dirección, WhatsApp, nombre del dueño y `horario` (`dias`: 0 = domingo … 6 = sábado; `porDia: { 6: { cierra: '14:00' } }` para un día con otro horario). Opcional: `portada` (foto de la web pública) |
 | `tema` | Colores: `primario`, `acento`, `fondo` |
 | `vocabulario` | Palabras del rubro en singular y plural: `profesional`, `cliente`, `cita`, `servicio` |
 | `servicios` | `id`, `nombre`, `categoria`, `precio`, `duracion` (min), `insumos` (costo por servicio), `demanda` (1–5) |
@@ -112,7 +112,11 @@ src/
 | `extras` | Módulos extra que se activan, con sus datos (ver abajo) |
 | `resenas` | Reseñas ficticias para la web pública |
 | `mensajes` | Opcional: tu propio texto para los mensajes automáticos |
-| `simulacion` | La "historia" de los números: semilla, número de clientes, citas por día, mes flojo, tendencia… |
+| `recursos` | Opcional: equipos compartidos, p. ej. `[{ id: 'laser', nombre: 'el láser', cantidad: 1 }]`; el servicio que lo usa lleva `recurso: 'laser'` y nunca se agendan dos a la vez |
+| `simulacion` | La "historia" de los números: semilla, número de clientes, citas por día, mes flojo, tendencia… Opcional: `afinidad` (0–1, cada cliente repite su servicio favorito) y `respetarIntervalos: true` (nadie repite un servicio con `seguimientoDias` antes de tiempo) |
+
+En `servicios`, el precio público puede mostrarse como `desde: true` ("Desde $600") o con `precioTexto: 'Según valoración'`;
+`precio` sigue alimentando los números de ejemplo.
 
 > **Cuida el vocabulario:** los textos usan frases como "Nueva {cita}" o "Nuevo {cliente}". Elige palabras que
 > concuerden (cita/consulta son femeninas; cliente/paciente, masculinas).
@@ -139,8 +143,21 @@ Se activan agregando su clave dentro de `extras`:
 | `propinas` | Propinas al cobrar y por profesional | `propinas: { probabilidad: 0.6, rango: [0.08, 0.2] }` |
 | `mostrador` | Venta de productos con inventario y comisión | `mostrador: { comision: 0.1, ventasPorDia: [1, 4], productos: [{ id, nombre, precio, costo, stock, minimo }] }` |
 | `seguimiento` | Ficha por sesión y próxima cita sugerida | `seguimiento: { plantillas: { tipo: [campos] }, notas: { tipo: [textos] } }` y en cada servicio `ficha: 'tipo'`, `seguimientoDias: 14` |
+| `cursos` | Cursos con cupo, inscritas, anticipos y saldos (y sección en la web pública) | `cursos: [{ id, nombre, cuando, enDias, diaSemana, precio, anticipo, cupo, imparte, inscritasDemo }]` |
 
 Revisa `barberia.js` y `consultorio.js` para ver ejemplos completos.
+
+### Demo personalizada para un cliente (p. ej. `lifeskin.js`)
+
+Para enseñarle a un negocio real su propia demo, con sus servicios, precios y logotipo:
+
+- `oculto: true`: no aparece en el selector de rubros; solo se abre con su enlace
+  (`https://demo.angelgomezp.dev/?rubro=lifeskin&plan=crecimiento`).
+- `aviso` (texto del banner superior) y `etiqueta` (en lugar del selector de rubros).
+- En `negocio`: `datosReales: true` (quita "número ficticio") y `pie` (texto al pie de la web pública).
+- Guarda sus imágenes en `public/clientes/<id>/`.
+
+Pide permiso al negocio antes de publicar su nombre y su logotipo. Los clientes, citas y cifras siguen siendo ficticios.
 
 ### ¿Y si el rubro necesita un módulo que no existe?
 

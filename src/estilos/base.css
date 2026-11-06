@@ -443,6 +443,10 @@ svg {
     right: 10px;
   }
 
+  .selector-rubro.selector-fijo::before {
+    content: none;
+  }
+
   .selector-rubro select {
     padding-right: 20px;
     max-width: none;

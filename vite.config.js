@@ -29,7 +29,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,webp,webmanifest}'],
         // Los enlaces compartidos llevan ?rubro=…&plan=…; se ignoran para servir la app desde caché sin conexión.
         ignoreURLParametersMatching: [/.*/],
         navigateFallback: 'index.html',

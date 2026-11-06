@@ -1,12 +1,14 @@
 // Cálculos del negocio que comparten todos los módulos: disponibilidad, resumen de clientes, finanzas y comisiones.
 
 import * as F from './formato.js';
-import { profesionalOfrece, trabajaEseDia, ID_DE_PASO } from './datos/generador.js';
+import { crearVocab } from './vocab.js';
+import { profesionalOfrece, trabajaEseDia, horarioDelDia, capacidadRecurso, ID_DE_PASO } from './datos/generador.js';
 
 export function crearConsultas(config, getDatos, hook) {
   const servicios = new Map(config.servicios.map((s) => [s.id, s]));
   const personal = new Map(config.personal.map((p) => [p.id, p]));
   const D = () => getDatos();
+  const vocab = crearVocab(config);
   const horario = config.negocio.horario;
   const abre = F.aMin(horario.abre);
   const cierra = F.aMin(horario.cierra);
@@ -28,6 +30,32 @@ export function crearConsultas(config, getDatos, hook) {
     /** Citas que ocupan agenda (no canceladas). */
     citasActivas: (fecha) => D().citas.filter((c) => c.fecha === fecha && c.estado !== 'cancelada'),
 
+    /** Horario de esa fecha en minutos, o null si cierra (respeta `horario.porDia`). */
+    horasDelDia: (fecha) => horarioDelDia(horario, fecha),
+
+    /** Citas que ya usan el equipo compartido de un servicio (p. ej. el único láser) en ese rango. */
+    usoDeRecurso({ fecha, ini, duracion, servicioId, ignorarId = null, citas = null }) {
+      const rec = q.servicio(servicioId).recurso;
+      if (!rec) return { lleno: false };
+      const usan = (citas || q.citasActivas(fecha)).filter(
+        (c) => c.id !== ignorarId && c.fecha === fecha && c.estado !== 'cancelada' && q.servicio(c.servicioId).recurso === rec && ini < F.aMin(c.hora) + c.duracion && F.aMin(c.hora) < ini + duracion,
+      );
+      const nombre = (config.recursos || []).find((r) => r.id === rec)?.nombre || 'el equipo';
+      return { lleno: usan.length >= capacidadRecurso(config, rec), nombre, citas: usan };
+    },
+
+    /** Por qué no se puede poner una cita en ese lugar ('' si sí se puede). */
+    motivoNoDisponible({ fecha, hora, duracion, profesionalId, servicioId, id }) {
+      const dia = q.horasDelDia(fecha);
+      const ini = F.aMin(hora);
+      if (!dia) return 'El negocio no abre ese día.';
+      if (ini < dia.abre || ini + duracion > dia.cierra) return `Ese día se atiende de ${F.hora12(F.aHora(dia.abre))} a ${F.hora12(F.aHora(dia.cierra))}.`;
+      if (q.hayConflicto({ fecha, hora, duracion, profesionalId, id })) return `Ese horario se cruza con otra ${vocab('cita')} de ${q.profesional(profesionalId).nombre}.`;
+      const rec = q.usoDeRecurso({ fecha, ini, duracion, servicioId, ignorarId: id });
+      if (rec.lleno) return `${F.capital(rec.nombre)} ya está ocupado a esa hora.`;
+      return '';
+    },
+
     hayConflicto({ fecha, hora, duracion, profesionalId, id }) {
       const ini = F.aMin(hora);
       return D().citas.find(
@@ -43,15 +71,17 @@ export function crearConsultas(config, getDatos, hook) {
 
     /** Horarios libres para un servicio en una fecha. profesionalId = null → cualquiera. */
     horariosLibres({ fecha, servicioId, profesionalId = null, ignorarId = null, paso = 30 }) {
-      if (!q.abiertoEl(fecha)) return [];
+      const dia = q.horasDelDia(fecha);
+      if (!dia) return [];
       const serv = q.servicio(servicioId);
       const profs = profesionalId ? [q.profesional(profesionalId)] : q.profesionalesPara(servicioId, fecha);
       const citas = D().citas.filter((c) => c.fecha === fecha && c.estado !== 'cancelada' && c.id !== ignorarId);
       const hoy = F.hoyIso();
       const ahora = F.minutosAhora();
       const out = [];
-      for (let t = abre; t + serv.duracion <= cierra; t += paso) {
+      for (let t = dia.abre; t + serv.duracion <= dia.cierra; t += paso) {
         if (fecha < hoy || (fecha === hoy && t < ahora + 10)) continue;
+        if (q.usoDeRecurso({ fecha, ini: t, duracion: serv.duracion, servicioId, ignorarId, citas }).lleno) continue;
         const libres = profs.filter(
           (p) =>
             trabajaEseDia(p, fecha) &&

@@ -147,6 +147,14 @@ function bloqueCita(ctx, c, extraEstilo = '') {
   </button>`;
 }
 
+/** Franja gris para las horas en que ese día ya cerró (p. ej. sábado después de las 2 pm). */
+function zonaCerrada(ctx, fecha) {
+  const dia = ctx.q.horasDelDia(fecha);
+  if (!dia) return '';
+  const franja = (desde, hasta) => (hasta > desde ? `<div class="ag-cerrado" style="top:${(desde - ctx.q.abre) * PXM}px;height:${(hasta - desde) * PXM}px"><span>Cerrado</span></div>` : '');
+  return franja(ctx.q.abre, dia.abre) + franja(dia.cierra, ctx.q.cierra);
+}
+
 function columnaHoras(ctx) {
   let html = '';
   for (let m = ctx.q.abre; m < ctx.q.cierra; m += 60) html += `<span style="top:${(m - ctx.q.abre) * PXM}px">${F.horaCorta(m)}</span>`;
@@ -199,7 +207,7 @@ function vistaDia(el, ctx, pintar) {
           .map((p) => {
             const descansa = (p.descanso || []).includes(F.diaSemana(fecha));
             return `<div class="ag-col${descansa ? ' descanso' : ''}" data-prof="${p.id}" data-fecha="${fecha}" style="height:${alto}px">
-            ${citas.filter((c) => c.profesionalId === p.id).sort((a, b) => (a.estado === 'cancelada') - (b.estado === 'cancelada')).map((c) => bloqueCita(ctx, c)).join('')}
+            ${zonaCerrada(ctx, fecha)}${citas.filter((c) => c.profesionalId === p.id).sort((a, b) => (a.estado === 'cancelada') - (b.estado === 'cancelada')).map((c) => bloqueCita(ctx, c)).join('')}
           </div>`;
           })
           .join('')}
@@ -242,7 +250,7 @@ function vistaSemana(el, ctx) {
         ${fechas
           .map((d) => {
             const delDia = filtradas.filter((c) => c.fecha === d && c.estado !== 'cancelada');
-            return `<div class="ag-col" data-fecha="${d}" ${estado.prof !== 'todos' ? `data-prof="${estado.prof}"` : ''} style="height:${alto}px">${carriles(delDia)
+            return `<div class="ag-col" data-fecha="${d}" ${estado.prof !== 'todos' ? `data-prof="${estado.prof}"` : ''} style="height:${alto}px">${zonaCerrada(ctx, d)}${carriles(delDia)
               .map(({ cita, carril, total }) => bloqueCita(ctx, cita, `left:calc(${(carril / total) * 100}% + 2px);width:calc(${100 / total}% - 4px);right:auto;`))
               .join('')}</div>`;
           })
@@ -318,7 +326,7 @@ function habilitarArrastre(el, ctx, pintar) {
     if (d.fantasma.parentElement !== col) col.appendChild(d.fantasma);
     d.fantasma.style.top = `${(min - ctx.q.abre) * PXM}px`;
     d.fantasma.querySelector('.ag-cita-hora').textContent = F.hora12(d.destino.hora);
-    const conflicto = ctx.q.hayConflicto({ ...d.destino, duracion: cita.duracion, id: cita.id });
+    const conflicto = ctx.q.motivoNoDisponible({ ...d.destino, duracion: cita.duracion, servicioId: cita.servicioId, id: cita.id });
     const p = ctx.q.profesional(d.destino.profesionalId);
     d.fantasma.classList.toggle('invalida', !!conflicto || !profesionalOfrece(p, cita.servicioId));
   };
@@ -337,8 +345,8 @@ function habilitarArrastre(el, ctx, pintar) {
     if (destino.fecha === cita.fecha && destino.hora === cita.hora && destino.profesionalId === cita.profesionalId) return;
     const p = ctx.q.profesional(destino.profesionalId);
     if (!profesionalOfrece(p, cita.servicioId)) return aviso(`${esc(p.nombre)} no ofrece ${esc(ctx.q.servicio(cita.servicioId).nombre)}.`, { tipo: 'error' });
-    const choque = ctx.q.hayConflicto({ ...destino, duracion: cita.duracion, id: cita.id });
-    if (choque) return aviso(`Ese horario se cruza con otra ${ctx.t('cita')} de ${esc(p.nombre)}.`, { tipo: 'error' });
+    const motivo = ctx.q.motivoNoDisponible({ ...destino, duracion: cita.duracion, servicioId: cita.servicioId, id: cita.id });
+    if (motivo) return aviso(esc(motivo), { tipo: 'error' });
     const antes = { fecha: cita.fecha, hora: cita.hora, profesionalId: cita.profesionalId };
     Object.assign(cita, destino);
     ctx.guardar();

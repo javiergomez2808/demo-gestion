@@ -115,3 +115,6 @@ export const uid = (prefijo = 'x') => `${prefijo}${Date.now().toString(36)}${Mat
 export const suma = (arr, fn = (x) => x) => arr.reduce((s, x) => s + (fn(x) || 0), 0);
 
 export const variacion = (actual, anterior) => (anterior ? (actual - anterior) / anterior : 0);
+
+/** Precio para mostrar al público: "$600", "Desde $600" (desde: true) o un texto libre (precioTexto). */
+export const precioPublico = (s) => s.precioTexto || (s.desde ? `Desde ${dinero(s.precio)}` : dinero(s.precio));

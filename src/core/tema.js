@@ -11,9 +11,9 @@ export function aplicarTema(config) {
   document.title = `${config.negocio.nombre} · Demo`;
 }
 
-/** Logo del negocio: SVG propio o emoji, dentro de un cuadro con el color del rubro. */
+/** Logo del negocio: imagen (logotipo real), SVG propio o emoji, dentro de un cuadro con el color del rubro. */
 export function logoHtml(config, clase = '') {
   const logo = config.negocio.logo || {};
-  const contenido = logo.svg ? logo.svg : `<span class="logo-emoji">${esc(logo.emoji || '★')}</span>`;
-  return `<span class="logo ${clase}" aria-hidden="true">${contenido}</span>`;
+  const contenido = logo.img ? `<img src="${esc(logo.img)}" alt="">` : logo.svg ? logo.svg : `<span class="logo-emoji">${esc(logo.emoji || '★')}</span>`;
+  return `<span class="logo ${logo.img ? 'logo-img ' : ''}${clase}" aria-hidden="true">${contenido}</span>`;
 }

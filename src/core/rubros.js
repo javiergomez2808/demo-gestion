@@ -42,6 +42,9 @@ export const RUBROS = Object.values(archivos)
   .map(normalizar)
   .sort((a, b) => a.orden - b.orden);
 
+/** Rubros del selector. Los `oculto: true` (demos personalizadas para un cliente) solo se abren con su enlace ?rubro=… */
+export const RUBROS_VISIBLES = RUBROS.filter((r) => !r.oculto);
+
 export function obtenerRubro(id) {
-  return RUBROS.find((r) => r.id === id) || RUBROS[0];
+  return RUBROS.find((r) => r.id === id) || RUBROS_VISIBLES[0];
 }

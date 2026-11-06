@@ -28,6 +28,23 @@ export function trabajaEseDia(prof, fecha) {
   return !(prof.descanso || []).includes(F.diaSemana(fecha));
 }
 
+/**
+ * Horario de una fecha en minutos ({ abre, cierra }), o null si ese día no abre.
+ * `horario.porDia` permite horas distintas por día, p. ej. { 6: { cierra: '14:00' } } = sábado hasta las 2 pm.
+ */
+export function horarioDelDia(horario, fecha) {
+  const dia = F.diaSemana(fecha);
+  if (!horario.dias.includes(dia)) return null;
+  const h = { abre: horario.abre, cierra: horario.cierra, ...(horario.porDia?.[dia] || {}) };
+  return { abre: F.aMin(h.abre), cierra: F.aMin(h.cierra) };
+}
+
+/** Cuántos equipos hay de un recurso compartido (p. ej. un solo láser). Sin recurso → sin límite. */
+export function capacidadRecurso(config, recursoId) {
+  if (!recursoId) return Infinity;
+  return (config.recursos || []).find((r) => r.id === recursoId)?.cantidad ?? 1;
+}
+
 export function generarDatos(config) {
   const hoy = F.hoyIso();
   const ahora = F.minutosAhora();
@@ -88,22 +105,39 @@ export function generarDatos(config) {
       _ritmo: ritmo,
       _desde: desde,
       _hasta: hasta,
+      // Opcional (simulacion.afinidad): cada cliente tiene un servicio favorito que suele repetir
+      ...(sim.afinidad ? { _fav: azar.ponderado(config.servicios.filter((s) => !s.soloVenta), (s) => s.demanda ?? 1).id } : {}),
     });
   }
 
   // ---------- Citas ----------
-  const ocupacion = new Map(); // `${fecha}|${profId}` -> [[ini, fin]]
+  const ocupacion = new Map(); // `${fecha}|${profId}` y `${fecha}|recurso:${id}` -> [[ini, fin]]
   const ultimaVisita = new Map();
-  const libre = (fecha, profId, ini, dur) =>
-    ini >= abre && ini + dur <= cierra && !(ocupacion.get(`${fecha}|${profId}`) || []).some(([a, b]) => ini < b && a < ini + dur);
-  const ocupar = (fecha, profId, ini, dur) => {
-    const k = `${fecha}|${profId}`;
-    if (!ocupacion.has(k)) ocupacion.set(k, []);
-    ocupacion.get(k).push([ini, ini + dur]);
+  const cruces = (k, ini, dur) => (ocupacion.get(k) || []).filter(([a, b]) => ini < b && a < ini + dur).length;
+  const libre = (fecha, profId, ini, serv, dia) =>
+    ini >= dia.abre &&
+    ini + serv.duracion <= dia.cierra &&
+    !cruces(`${fecha}|${profId}`, ini, serv.duracion) &&
+    (!serv.recurso || cruces(`${fecha}|recurso:${serv.recurso}`, ini, serv.duracion) < capacidadRecurso(config, serv.recurso));
+  const ocupar = (fecha, profId, ini, serv) => {
+    const claves = [`${fecha}|${profId}`, ...(serv.recurso ? [`${fecha}|recurso:${serv.recurso}`] : [])];
+    for (const k of claves) {
+      if (!ocupacion.has(k)) ocupacion.set(k, []);
+      ocupacion.get(k).push([ini, ini + serv.duracion]);
+    }
   };
   const servicios = config.servicios;
   const personal = config.personal;
   const yaVino = new Set(); // `${clienteId}|${tipo}`: para que la "primera consulta" sea solo la primera
+  // Opcional (simulacion.respetarIntervalos): nadie repite un tratamiento con seguimiento antes de tiempo
+  // (p. ej. láser cada ~5 semanas), así las fichas y los paquetes se ven realistas.
+  const ultimaSesion = new Map(); // `${clienteId}|${ficha}` -> fecha
+  const tipoSesion = (s) => s.ficha || s.id;
+  const muyPronto = (cli, s, fecha) => {
+    if (!sim.respetarIntervalos || !s.seguimientoDias) return false;
+    const u = ultimaSesion.get(`${cli.id}|${tipoSesion(s)}`);
+    return !!u && F.difDias(u, fecha) < s.seguimientoDias * 0.8;
+  };
   let idCita = 0;
 
   function elegirCliente(fecha) {
@@ -122,9 +156,11 @@ export function generarDatos(config) {
 
   for (let fecha = inicio; fecha <= fin; fecha = F.sumarDias(fecha, 1)) {
     const dia = F.diaSemana(fecha);
-    if (!horario.dias.includes(dia)) continue;
+    const horas = horarioDelDia(horario, fecha);
+    if (!horas) continue;
     const dias = F.difDias(inicio, fecha);
     let factor = (sim.factorDia || FACTOR_DIA_SEMANA)[dia] ?? 1;
+    factor *= (horas.cierra - horas.abre) / (cierra - abre); // días con horario corto, menos citas
     factor *= 1 + (sim.tendencia ?? 0.06) * (dias / Math.max(1, totalDias));
     if (F.claveMes(fecha) === mesFlojo) factor *= sim.mesFlojo.factor;
     const adelante = F.difDias(hoy, fecha);
@@ -142,13 +178,13 @@ export function generarDatos(config) {
       const opciones = servicios.filter((s) => profesionalOfrece(prof, s.id) && !s.soloVenta);
       let serv = azar.ponderado(opciones, (s) => s.demanda ?? 1);
       const paso = sim.pasoMinutos ?? 30;
-      const huecos = Math.floor((cierra - abre - serv.duracion) / paso);
+      const huecos = Math.floor((horas.cierra - horas.abre - serv.duracion) / paso);
       let ini = null;
       for (let intento = 0; intento < 14; intento++) {
         // Más demanda por la tarde
         const t = azar.prob(0.55) ? azar.entero(Math.floor(huecos * 0.45), huecos) : azar.entero(0, huecos);
-        const candidato = abre + t * paso;
-        if (libre(fecha, prof.id, candidato, serv.duracion)) {
+        const candidato = horas.abre + t * paso;
+        if (libre(fecha, prof.id, candidato, serv, horas)) {
           ini = candidato;
           break;
         }
@@ -156,8 +192,14 @@ export function generarDatos(config) {
       if (ini === null) continue;
       const pasada = fecha < hoy || (fecha === hoy && ini + serv.duracion <= ahora);
       const dePaso = pasada && sim.sinRegistro > 0 && azar.prob(sim.sinRegistro);
-      const cliente = dePaso ? { id: ID_DE_PASO } : elegirCliente(fecha);
-      if (!cliente) continue;
+      let cliente = dePaso ? { id: ID_DE_PASO } : elegirCliente(fecha);
+      for (let intento = 0; sim.respetarIntervalos && cliente && !dePaso && muyPronto(cliente, serv, fecha) && intento < 6; intento++) cliente = elegirCliente(fecha);
+      if (!cliente || (!dePaso && muyPronto(cliente, serv, fecha))) continue;
+      // Afinidad: si el cliente tiene un favorito y este profesional lo ofrece, casi siempre pide ese
+      if (sim.afinidad && cliente._fav && cliente._fav !== serv.id && azar.prob(sim.afinidad)) {
+        const fav = servicios.find((s) => s.id === cliente._fav);
+        if (fav && profesionalOfrece(prof, fav.id) && libre(fecha, prof.id, ini, fav, horas) && !muyPronto(cliente, fav, fecha)) serv = fav;
+      }
       // Servicios de primera vez (p. ej. valoración inicial): quien ya vino recibe el servicio de seguimiento
       const tipo = serv.ficha || serv.categoria || serv.id;
       if (serv.soloPrimeraVez && yaVino.has(`${cliente.id}|${tipo}`)) {
@@ -191,8 +233,9 @@ export function generarDatos(config) {
         confirmada: estado === 'programada' ? adelante <= 1 && azar.prob(0.7) : true,
         notas: '',
       });
-      if (estado !== 'cancelada') ocupar(fecha, prof.id, ini, serv.duracion);
+      if (estado !== 'cancelada') ocupar(fecha, prof.id, ini, serv);
       if (!dePaso && estado !== 'cancelada' && fecha <= hoy) ultimaVisita.set(cliente.id, fecha);
+      if (sim.respetarIntervalos && !dePaso && estado !== 'cancelada') ultimaSesion.set(`${cliente.id}|${tipoSesion(serv)}`, fecha);
     }
   }
   datos.citas.sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora));
@@ -244,6 +287,7 @@ export function generarDatos(config) {
     delete c._ritmo;
     delete c._desde;
     delete c._hasta;
+    delete c._fav;
   }
   return datos;
 }
